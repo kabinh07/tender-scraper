@@ -90,7 +90,7 @@ def get_tenders_data():
             break
         except StaleElementReferenceException as e:
             time.sleep(2)
-            table = WebDriverWait(driver, 10).until(EC.presence_of_element_located(By.ID, "resultTable"))
+            table = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "resultTable")))
     return row_data
 
 # For getting the tender data in list of json format
@@ -169,6 +169,9 @@ def send_tenders():
     logging.info(f"Total {int(len(tenders))+1} Tender Data sent...")
 
 # --------------------- Tender Scraper END -----------------------------------#
+
+# --------------------- Job Scraper Start -----------------------------------#
+
 
 def job_listener(event):
     if not isinstance(event, JobSubmissionEvent) and event.exception:
