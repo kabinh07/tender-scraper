@@ -178,7 +178,7 @@ def job_listener(event):
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
-    scheduler.add_job(send_tenders, 'interval', minutes = 10)
+    scheduler.add_job(send_tenders, 'interval', minutes = 60)
     scheduler.start()
     scheduler.add_listener(job_listener)
     driver.quit()
