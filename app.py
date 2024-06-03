@@ -12,28 +12,46 @@ from telebot.apihelper import ApiTelegramException
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.events import JobSubmissionEvent
+import logging
+import random
+from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+load_dotenv()
 
 # Initializing telegram bot
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
+user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+]
+
 # Options for chrome driver
 opts = ChromeOptions()
 opts.add_argument("--headless=new")
-# opts.page_load_strategy = 'eager'
+opts.add_argument(f'user-agent={random.choice(user_agents)}')
+opts.add_argument("--no-sandbox")
+opts.add_argument("--disable-dev-shm-usage")
+opts.page_load_strategy = 'eager'
+
+# --------------------- Tender Scraper Start -----------------------------------#
 
 # URL of the website to scrape
 url = "https://www.eprocure.gov.bd/resources/common/StdTenderSearch.jsp?h=t"
-
-# Webdriver assignment and implicit time delay assign
-driver = webdriver.Chrome(options=opts)
-driver.implicitly_wait(5)
 
 # Current time assignment
 c_time = datetime.now()
 
 # Set the duration of tenders
 c_time_delayed = c_time - timedelta(hours=1)
+
+# Webdriver assignment and implicit time delay assign
+driver = webdriver.Chrome(options=opts)
+driver.implicitly_wait(5)
 
 # For getting the columns of the table
 def get_tenders_columns():
@@ -83,17 +101,14 @@ def get_tenders():
     while True:
         try:
             WebDriverWait(driver, 10).until(EC.visibility_of_element_located(table_load))
-            print("Table Loaded...")
+            logging.info("Table Loaded...")
             break
         except Exception as e:
-            print("Failed to Load Table...")
-            driver.quit()
-            driver.get(url)
+            logging.info("Failed to Load Table...")
     columns = get_tenders_columns()
     data = []
     counter = 1
     while True:
-        print(f"Page: {counter}")
         pg_data = get_tenders_data()
         if len(pg_data) == 0:
             break
@@ -104,22 +119,30 @@ def get_tenders():
             counter+=1
             time.sleep(5)
         except:
-            print("No More Next Button...Exiting...!")
+            logging.info("No More Next Button...Exiting...!")
             break
-    driver.quit()
+    logging.info(f"Total Pages Scrapped: {counter}")
     return columns, data
 
 def get_group_chat_id():
     updates = bot.get_updates()
     group_chat_ids = set()
+    groups = []
     for update in updates:
         if update.message and update.message.chat.type in ['group', 'supergroup']:
             group_chat_ids.add(update.message.chat.id)
-    return list(group_chat_ids)
+    for id in group_chat_ids:
+        try:
+            status = bot.get_chat_member(chat_id=id, user_id=bot.get_me().id)
+            if str(status.status) != "kicked":
+                groups.append(id)
+        except:
+            pass
+    return groups
 
 def send_tenders():
     group_ids = get_group_chat_id()
-    print(group_ids)
+    logging.info(f"Connected Group IDs: {group_ids}")
     columns, tenders = get_tenders()
     columns = [col.replace('\n','') for col in columns]
     if len(tenders) > 0:
@@ -141,21 +164,21 @@ def send_tenders():
                 except ApiTelegramException as e:
                     retry+=1
                     retry_after = int(e.result_json['parameters']['retry_after'])
-                    print(f"Retrying After {retry_after} seconds...")
+                    logging.info(f"Retrying After {retry_after} seconds...")
                     time.sleep(retry_after)
+    logging.info(f"Total {int(len(tenders))+1} Tender Data sent...")
+
+# --------------------- Tender Scraper END -----------------------------------#
 
 def job_listener(event):
     if not isinstance(event, JobSubmissionEvent) and event.exception:
-        print('The job crashed :(')
+        logging.info('The job crashed :(')
     else:
-        print('The job worked :) ' + str(event))
+        logging.info('The job worked :) ' + str(event))
 
 if __name__ == "__main__":
-    scheduler = BackgroundScheduler(daemon = True)
-    scheduler.add_job(send_tenders, 'interval', minutes = 60)
+    scheduler = BlockingScheduler()
+    scheduler.add_job(send_tenders, 'interval', minutes = 10)
     scheduler.start()
     scheduler.add_listener(job_listener)
-    while True:
-        i = input("Enter x to exit: ")
-        if i == 'x':
-            break
+    driver.quit()
