@@ -61,6 +61,9 @@ driver_li.implicitly_wait(5)
 driver_ji = webdriver.Chrome(options=opts)
 driver_ji.implicitly_wait(5)
 
+driver_jb = webdriver.Chrome(options=opts)
+driver_jb.implicitly_wait(5)
+
 # For getting the columns of the table
 def get_tenders_columns():
     table = driver.find_element(By.ID, "resultTable")
@@ -228,21 +231,21 @@ def linkedin_scraper():
             except Exception as e:
                 print(e)
 #----------------------Jobindex Scraper--------------------------------#
-def ignoring_ji_popups():
-    driver_ji.get("https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en")
-    WebDriverWait(driver_ji, 20).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+def ignoring_popups(url, driver):
+    driver.get(url)
+    WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
     try:
-        btn = driver_ji.find_element(By.XPATH, '//*[@id="jix-cookie-consent-accept-all"]')
+        btn = driver.find_element(By.XPATH, '//*[@id="jix-cookie-consent-accept-all"]')
         btn.click()
         print("Cookies Accepted...")
-        cross_btn = driver_ji.find_element(By.XPATH, '//*[@id="jobmail_popup"]/div/div/div/button/span')
+        cross_btn = driver.find_element(By.XPATH, '//*[@id="jobmail_popup"]/div/div/div/button/span')
         cross_btn.click()
         time.sleep(2)
     except Exception as e:
         print(e)
 
 def jobindex_scraper():
-    ignoring_ji_popups()
+    ignoring_popups("https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en", driver_ji)
     for keyword in keyword_list:
         keyword = keyword.replace(" ", "+")
         base_url = f"https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
@@ -283,12 +286,55 @@ def jobindex_scraper():
                 time.sleep(2)
                 break
 
+#-----------------------it-jobbank-----------------------#
+
+def jobbank_scrapper():
+    ignoring_popups("https://www.it-jobbank.dk/jobsoegning/danmark?jobage=1&lang=en", driver_jb)
+    for keyword in keyword_list:
+        keyword = keyword.replace(" ", "+")
+        base_url = f"https://www.it-jobbank.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
+        driver_jb.get(base_url)
+        time.sleep(60)
+        while True:
+            WebDriverWait(driver_jb, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "results")))
+            results = driver_jb.find_elements(By.CLASS_NAME, "jobsearch-result")
+            print(len(results))
+            for result in results:
+                WebDriverWait(driver_jb, 10).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "job-location")))
+                job_head = result.find_element(By.TAG_NAME, "h3")
+                job_pos = job_head.text             
+                try:
+                    location_tag = result.find_element(By.CLASS_NAME, "job-location")
+                except:
+                    location_tag = result.find_element(By.CLASS_NAME, "jobad-element-dialog-link")
+                location = location_tag.text
+                descriptions = result.find_elements(By.TAG_NAME, "p")
+                job_url_tag = job_head.find_element(By.TAG_NAME, "a")
+                job_url = job_url_tag.get_attribute("href")
+                description = ""
+                for d in descriptions:
+                    description = description+d.text
+                print(f"Position: {job_pos}")
+                print(f"Locations: {location}")
+                print(f"Job URL: {job_url}")
+                print(f"JD: {description}")
+                print("===================")
+                time.sleep(2)
+            try:
+                pag = driver_jb.find_element(By.CLASS_NAME, "jix_pagination")
+                nxt_pag = pag.find_element(By.CLASS_NAME, "page-item-next")
+                link = nxt_pag.find_element(By.TAG_NAME, "a")
+                url = link.get_attribute("href")
+                driver_jb.get(url)
+                time.sleep(2)
+            except:
+                print("No more pages...")
+                time.sleep(2)
+                break
 
 
 
-
-
-# --------------------- Job Scraper Start -----------------------------------#
+# --------------------- Job Scraper End -----------------------------------#
 
 def job_listener(event):
     if not isinstance(event, JobSubmissionEvent) and event.exception:
@@ -306,5 +352,5 @@ def job_listener(event):
 #     driver_li.quit()
 
 if __name__ == "__main__":
-    linkedin_scraper()
+    jobbank_scrapper()
     driver_li.quit()
