@@ -15,6 +15,7 @@ from apscheduler.events import JobSubmissionEvent
 import logging
 import random
 from dotenv import load_dotenv
+from selenium.common.exceptions import NoAlertPresentException
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -32,10 +33,11 @@ user_agents = [
 
 # Options for chrome driver
 opts = ChromeOptions()
-opts.add_argument("--headless=new")
+# opts.add_argument("--headless=new")
 opts.add_argument(f'user-agent={random.choice(user_agents)}')
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
+opts.add_argument("--window-size=1920,1080")
 opts.page_load_strategy = 'eager'
 
 # --------------------- Tender Scraper Start -----------------------------------#
@@ -52,6 +54,12 @@ c_time_delayed = c_time - timedelta(hours=1)
 # Webdriver assignment and implicit time delay assign
 driver = webdriver.Chrome(options=opts)
 driver.implicitly_wait(5)
+
+driver_li = webdriver.Chrome(options=opts)
+driver_li.implicitly_wait(5)
+
+driver_ji = webdriver.Chrome(options=opts)
+driver_ji.implicitly_wait(5)
 
 # For getting the columns of the table
 def get_tenders_columns():
@@ -153,12 +161,13 @@ def send_tenders():
             while retry < max_try:
                 try:
                     for group_id in group_ids:
-                        bot.send_message(
-                            chat_id = group_id,
-                            text = msg,
-                            allow_sending_without_reply = True,
-                            parse_mode='HTML'
-                            )
+                        # bot.send_message(
+                        #     chat_id = group_id,
+                        #     text = msg,
+                        #     allow_sending_without_reply = True,
+                        #     parse_mode='HTML'
+                        #     )
+                        print(msg)
                     time.sleep(2)
                     break
                 except ApiTelegramException as e:
@@ -172,6 +181,114 @@ def send_tenders():
 
 # --------------------- Job Scraper Start -----------------------------------#
 
+# loading the searching keys from text file
+with open("search_keywords.txt", "r") as f:
+    keyword_list = list(f.read().split("\n"))
+
+#----------------------LinkedIn Scraper--------------------------------#
+
+def linkedin_scraper():
+    for keyword in keyword_list:
+        base_url = f"https://www.linkedin.com/jobs/search?keywords={keyword}&location=Denmark&geoId=104514075&f_TPR=r86400&position=1&pageNum=0"
+        driver_li.get(base_url)
+        retry = 1
+        max_retry = 5
+        while retry<=max_retry:
+            try:
+                WebDriverWait(driver_li, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".top-card-layout__title")))
+                job_cards = driver_li.find_elements(By.CLASS_NAME, "base-card__full-link")
+                break
+            except Exception as e:
+                retry+=1
+                print(e)
+        if retry >= max_retry:
+            print(f"Couldn't search for {keyword}")
+            continue
+        print(len(job_cards))
+        for card in job_cards:
+            try:
+                WebDriverWait(driver_li, 10).until(EC.element_to_be_clickable(card))
+                card.click()
+                detail_card = driver_li.find_element(By.CLASS_NAME, "details-pane__content")
+                WebDriverWait(driver_li, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".top-card-layout__title")))
+                job_pos = detail_card.find_element(By.CSS_SELECTOR, ".top-card-layout__title").text
+                location = detail_card.find_element(By.CSS_SELECTOR, "span.topcard__flavor:nth-child(2)").text
+                job_url_tag = detail_card.find_element(By.CSS_SELECTOR, ".topcard__link")
+                job_url = job_url_tag.get_attribute("href")
+                description = detail_card.find_element(By.CSS_SELECTOR, ".show-more-less-html__markup").text
+                time_ago = detail_card.find_element(By.CSS_SELECTOR, ".posted-time-ago__text").text
+                time_list = str(time_ago).split(' ')
+                # if time_list[1] == 'minutes' or time_list[1] == 'minute':    
+                print(job_pos, location)
+                print(description)
+                print(job_url)
+                print(time_ago)
+                print("=================")
+                time.sleep(5)
+            except Exception as e:
+                print(e)
+#----------------------Jobindex Scraper--------------------------------#
+def ignoring_ji_popups():
+    driver_ji.get("https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en")
+    WebDriverWait(driver_ji, 20).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+    try:
+        btn = driver_ji.find_element(By.XPATH, '//*[@id="jix-cookie-consent-accept-all"]')
+        btn.click()
+        print("Cookies Accepted...")
+        cross_btn = driver_ji.find_element(By.XPATH, '//*[@id="jobmail_popup"]/div/div/div/button/span')
+        cross_btn.click()
+        time.sleep(2)
+    except Exception as e:
+        print(e)
+
+def jobindex_scraper():
+    ignoring_ji_popups()
+    for keyword in keyword_list:
+        keyword = keyword.replace(" ", "+")
+        base_url = f"https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
+        driver_ji.get(base_url)
+        while True:
+            WebDriverWait(driver_ji, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "jobsearch-result")))
+            results = driver_ji.find_elements(By.CLASS_NAME, "jobsearch-result")
+            print(len(results))
+            for result in results:
+                WebDriverWait(driver_ji, 10).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "jix_robotjob--area")))
+                job_pos = result.find_element(By.TAG_NAME, "h4").text               
+                try:
+                    location_tag = result.find_element(By.CLASS_NAME, "jix_robotjob--area")
+                except:
+                    location_tag = result.find_element(By.CLASS_NAME, "jobad-element-area")
+                location = location_tag.text
+                descriptions = result.find_elements(By.TAG_NAME, "p")
+                job_url_tag = result.find_element(By.CLASS_NAME, "seejobdesktop")
+                job_url = job_url_tag.get_attribute("href")
+                description = ""
+                for d in descriptions:
+                    description = description+d.text
+                print(f"Position: {job_pos}")
+                print(f"Locations: {location}")
+                print(f"Job URL: {job_url}")
+                print(f"JD: {description}")
+                print("===================")
+                time.sleep(2)
+            try:
+                pag = driver_ji.find_element(By.CLASS_NAME, "jix_pagination")
+                nxt_pag = pag.find_element(By.CLASS_NAME, "page-item-next")
+                link = nxt_pag.find_element(By.TAG_NAME, "a")
+                url = link.get_attribute("href")
+                driver_ji.get(url)
+                time.sleep(2)
+            except:
+                print("No more pages...")
+                time.sleep(2)
+                break
+
+
+
+
+
+
+# --------------------- Job Scraper Start -----------------------------------#
 
 def job_listener(event):
     if not isinstance(event, JobSubmissionEvent) and event.exception:
@@ -179,9 +296,15 @@ def job_listener(event):
     else:
         logging.info('The job worked :) ' + str(event))
 
+# if __name__ == "__main__":
+#     scheduler = BlockingScheduler()
+#     scheduler.add_job(send_tenders, 'interval', minutes = 5)
+#     scheduler.add_job(linkedin_scraper, 'interval', minutes = 5)
+#     scheduler.start()
+#     scheduler.add_listener(job_listener)
+#     driver.quit()
+#     driver_li.quit()
+
 if __name__ == "__main__":
-    scheduler = BlockingScheduler()
-    scheduler.add_job(send_tenders, 'interval', minutes = 60)
-    scheduler.start()
-    scheduler.add_listener(job_listener)
-    driver.quit()
+    linkedin_scraper()
+    driver_li.quit()

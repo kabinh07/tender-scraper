@@ -1,0 +1,52 @@
+Software Engineer
+Web Developer
+Frontend Developer
+Backend Developer
+Full Stack Developer
+Mobile Developer
+DevOps Engineer
+Data Scientist
+Data Engineer
+Machine Learning Engineer
+Artificial Intelligence (AI) Developer
+Cloud Engineer
+Cybersecurity Analyst
+Systems Administrator
+Database Administrator
+UI/UX Designer
+QA Engineer
+Technical Support Engineer
+Network Engineer
+Embedded Systems Engineer
+Product Manager
+Project Manager 
+Java
+JavaScript
+Spring Boot
+Python
+Django
+Reactjs
+Vuejs
+Dot Net
+Cloud Solution (AWS, Oracle)
+Microservice
+PHP
+Laravel
+Containerization
+Docker
+Kubernetes
+Influxdb
+Node JS
+IOT
+Oracle
+Express JS 
+Dart
+Flutter
+Android
+iOS
+Firebase 
+Unit Testing
+Kotlin
+Android
+XML
+Widget Testing
