@@ -25,6 +25,10 @@ load_dotenv()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# GROUP_ID = os.environ.get("GROUP_ID")
+
+GROUP_ID = -4287359358
+
 user_agents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
@@ -33,7 +37,7 @@ user_agents = [
 
 # Options for chrome driver
 opts = ChromeOptions()
-# opts.add_argument("--headless=new")
+opts.add_argument("--headless=new")
 opts.add_argument(f'user-agent={random.choice(user_agents)}')
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
@@ -143,6 +147,7 @@ def get_tenders():
 
 def get_group_chat_id():
     updates = bot.get_updates()
+    print(updates)
     group_chat_ids = set()
     groups = []
     for update in updates:
@@ -155,11 +160,9 @@ def get_group_chat_id():
                 groups.append(id)
         except Exception as e:
             logging.info(f"Telebot: {e}")
-    return groups
+    print(groups)
 
 def send_tenders():
-    group_ids = get_group_chat_id()
-    logging.info(f"Connected Group IDs: {group_ids}")
     columns, tenders = get_tenders()
     columns = [col.replace('\n','') for col in columns]
     if len(tenders) > 0:
@@ -169,14 +172,11 @@ def send_tenders():
             max_try = 2
             while retry < max_try:
                 try:
-                    for group_id in group_ids:
-                        # bot.send_message(
-                        #     chat_id = group_id,
-                        #     text = msg,
-                        #     allow_sending_without_reply = True,
-                        #     parse_mode='HTML'
-                        #     )
-                        data_saver(msg, "data/telebot.txt")
+                    bot.send_message(
+                        chat_id = GROUP_ID,
+                        text = msg,
+                        parse_mode='HTML'
+                        )
                     time.sleep(2)
                     break
                 except ApiTelegramException as e:
@@ -197,55 +197,53 @@ with open("search_keywords.txt", "r") as f:
 #----------------------LinkedIn Scraper--------------------------------#
 
 def linkedin_scraper():
+    jobs = []
+    job_pos = ""
+    description = ""
+    job_url = ""
+    location = ""
     for keyword in keyword_list:
         count = 0
         base_url = f"https://www.linkedin.com/jobs/search?keywords={keyword}&location=Denmark&geoId=104514075&f_TPR=r86400&position=1&pageNum=0"
         driver_li.get(base_url)
         job_url= ""
-        retry = 1
-        max_retry = 5
-        while retry<=max_retry:
+        while count<3:
             try:
                 WebDriverWait(driver_li, 10).until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".jobs-search__results-list")))
                 job_cards = driver_li.find_elements(By.CLASS_NAME, "base-card")
                 break
             except Exception as e:
-                retry+=1
-                logging.info(f"linkedin: {e}")
-        if retry >= max_retry:
-            logging.info(f"linkedin: Couldn't search for {keyword}")
+                count+=1
+                logging.info(f"linkedin: retrying {count}: {e}")
+        if count > 2:
+            logging.info(f"linkedin: No results for {keyword}")
             continue
-        logging.info(len(job_cards))
+        logging.info(f"linkedin: {len(job_cards)} job for {keyword}")
         for card in job_cards:
-            while True:
+            retry = 0
+            max_retry = 5
+            while retry <= max_retry:
                 try:
-                    WebDriverWait(driver_li, 10).until(EC.element_to_be_clickable(card))
+                    WebDriverWait(driver_li, 30).until(EC.element_to_be_clickable(card))
                     card.click()
-
+                    WebDriverWait(driver_li, 30).until(lambda driver_li:driver_li.find_element(By.CSS_SELECTOR, ".top-card-layout__title"))
+                    time.sleep(5)
                 except Exception as e:
                     print(f"linkedin: clicking card failed: {e}")
+                    retry += 1
                     continue
                 try:
-                    WebDriverWait(driver_li, 10).until(lambda driver_li:driver_li.find_element(By.CSS_SELECTOR, ".topcard__link"))
-                    script = f"return document.getElementsByClassName('topcard__link')[0].getAttribute('href');"
-                    check_url = driver_li.execute_script(script)
-                    print(f"--------{check_url}")
-                except:
-                    print(f"linkedin: Exce url failed: {e}")
-                    continue
-                try:
-                    WebDriverWait(driver_li, 10).until(lambda driver_li:driver_li.find_element(By.CSS_SELECTOR, ".topcard__link").get_attribute("href")==check_url)
-                    # WebDriverWait(driver_li, 10).until(lambda driver_li : driver_li.execute_script('return document.readyState')=='complete')
                     detail_card = driver_li.find_element(By.XPATH, "/html/body/div[1]/div/section/div[2]")
                     break
                 except Exception as e:
+                    retry += 1
                     time.sleep(2)
                     logging.info(f"linkedin: Detail Panel was not found: {e}")
             try:    
                 job_pos = detail_card.find_element(By.CSS_SELECTOR, ".top-card-layout__title").text
-                logging.info(f"linkedin: Job Position: {job_pos}")
             except Exception as e:
-                logging.info(f"linkedin: Failed to fetch job position: {e}")    
+                logging.info(f"linkedin: Failed to fetch job position: {e}") 
+                 
             try:    
                 location = detail_card.find_element(By.CSS_SELECTOR, "span.topcard__flavor:nth-child(2)").text
             except Exception as e:
@@ -259,20 +257,17 @@ def linkedin_scraper():
                 description = detail_card.find_element(By.CSS_SELECTOR, ".show-more-less-html__markup").text
             except Exception as e:
                 logging.info(f"linkedin: Failed to fetch description: {e}")    
-                # time_ago = detail_card.find_element(By.CSS_SELECTOR, ".posted-time-ago__text").text
-                # time_list = str(time_ago).split(' ')
-                # if time_list[1] == 'minutes' or time_list[1] == 'minute':    
-                # logging.info(job_pos, location)
-                # print(description)
-                # print(job_url)
-                # print(time_ago)
-                # print("=================")
-                data_saver(job_pos+location+job_url, "data/linkedin.txt")
-                count+=1
-                time.sleep(5)
-            # except Exception as e:
-            #     logging.info(f"linkedin: Job position: {job_pos} \n {e}")
-        data_saver(f"-----------{count}---------", "data/linkedin.txt")
+            job_data = {}
+            job_data["position"] = job_pos
+            job_data["location"] = location
+            job_data["url"] = job_url
+            job_data["description"] = description
+            jobs.append(job_data)
+            time.sleep(5)
+    for job in jobs:
+        msg = f"<b>LinkedIn</b>\n---------------------\n<b>JOB POSITION</b> : {str(job['position'])}\n\n<b>JOB LOCATION</b> : {str(job['location'])}\n\n<b>JOB URL</b> : {str(job['url'])}\n\n<b>JOB DESCRIPTION</b> : {str(job['description'])}"
+        bot.send_message(chat_id=GROUP_ID, text=msg, parse_mode='HTML')
+
 #----------------------Jobindex Scraper--------------------------------#
 def ignoring_popups(url, driver):
     driver.get(url)
@@ -288,17 +283,27 @@ def ignoring_popups(url, driver):
         logging.info(f"Pop up: {e}")
 
 def jobindex_scraper():
+    jobs = []
+    job_pos = ""
+    description = ""
+    job_url = ""
+    location = ""
     ignoring_popups("https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en", driver_ji)
     for keyword in keyword_list:
         keyword = keyword.replace(" ", "+")
         base_url = f"https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
         driver_ji.get(base_url)
-        while True:
-            WebDriverWait(driver_ji, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "jobsearch-result")))
-            results = driver_ji.find_elements(By.CLASS_NAME, "jobsearch-result")
-            logging.info(len(results))
+        count = 0
+        while count < 3:
+            try:
+                WebDriverWait(driver_ji, 30).until(EC.presence_of_element_located((By.CLASS_NAME, "jobsearch-result")))
+                results = driver_ji.find_elements(By.CLASS_NAME, "jobsearch-result")
+                logging.info(f"jobindex: {len(results)} job for {keyword}")
+            except Exception as e:
+                count += 1
+                logging.info(f"jobindex: Error finding results. Retrying {count}: {e}")
             for result in results:
-                WebDriverWait(driver_ji, 10).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "jix_robotjob--area")))
+                WebDriverWait(driver_ji, 30).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "jix_robotjob--area")))
                 job_pos = result.find_element(By.TAG_NAME, "h4").text               
                 try:
                     location_tag = result.find_element(By.CLASS_NAME, "jix_robotjob--area")
@@ -311,12 +316,12 @@ def jobindex_scraper():
                 description = ""
                 for d in descriptions:
                     description = description+d.text
-                # logging.info(f"Position: {job_pos}")
-                # logging.info(f"Locations: {location}")
-                # logging.info(f"Job URL: {job_url}")
-                # logging.info(f"JD: {description}")
-                # logging.info("===================")
-                data_saver(job_pos+location+job_url+description, "data/jobindex.txt")
+                job_data = {}
+                job_data["position"] = job_pos
+                job_data["location"] = location
+                job_data["url"] = job_url
+                job_data["description"] = description
+                jobs.append(job_data)
                 time.sleep(2)
             try:
                 pag = driver_ji.find_element(By.CLASS_NAME, "jix_pagination")
@@ -329,22 +334,29 @@ def jobindex_scraper():
                 logging.info("jobindex: No more pages...")
                 time.sleep(2)
                 break
+    for job in jobs:
+        msg = f"<b>JobIndex</b>\n---------------------\n<b>JOB POSITION</b> : {str(job['position'])}\n\n<b>JOB LOCATION</b> : {str(job['location'])}\n\n<b>JOB URL</b> : {str(job['url'])}\n\n<b>JOB DESCRIPTION</b> : {str(job['description'])}"
+        bot.send_message(chat_id=GROUP_ID, text=msg, parse_mode='HTML')
 
 #-----------------------it-jobbank-----------------------#
 
 def jobbank_scrapper():
+    jobs = []
+    job_pos = ""
+    description = ""
+    job_url = ""
+    location = ""
     ignoring_popups("https://www.it-jobbank.dk/jobsoegning/danmark?jobage=1&lang=en", driver_jb)
     for keyword in keyword_list:
         keyword = keyword.replace(" ", "+")
         base_url = f"https://www.it-jobbank.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
         driver_jb.get(base_url)
-        time.sleep(60)
         while True:
-            WebDriverWait(driver_jb, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "results")))
+            WebDriverWait(driver_jb, 30).until(EC.presence_of_element_located((By.CLASS_NAME, "results")))
             results = driver_jb.find_elements(By.CLASS_NAME, "jobsearch-result")
-            logging.info(len(results))
+            logging.info(f"jobbank: {len(results)} job for {keyword}")
             for result in results:
-                WebDriverWait(driver_jb, 10).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "job-location")))
+                WebDriverWait(driver_jb, 30).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "job-location")))
                 job_head = result.find_element(By.TAG_NAME, "h3")
                 job_pos = job_head.text             
                 try:
@@ -358,12 +370,12 @@ def jobbank_scrapper():
                 description = ""
                 for d in descriptions:
                     description = description+d.text
-                # logging.info(f"Position: {job_pos}")
-                # logging.info(f"Locations: {location}")
-                # logging.info(f"Job URL: {job_url}")
-                # logging.info(f"JD: {description}")
-                # logging.info("===================")
-                data_saver(job_pos+location+job_url+description, "data/jobbank.txt")
+                job_data = {}
+                job_data["position"] = job_pos
+                job_data["location"] = location
+                job_data["url"] = job_url
+                job_data["description"] = description
+                jobs.append(job_data)
                 time.sleep(2)
             try:
                 pag = driver_jb.find_element(By.CLASS_NAME, "jix_pagination")
@@ -376,6 +388,9 @@ def jobbank_scrapper():
                 logging.info(f"jobbank: No more pages...")
                 time.sleep(2)
                 break
+    for job in jobs:
+        msg = f"<b>JobBank</b>\n---------------------\n<b>JOB POSITION</b> : {str(job['position'])}\n\n<b>JOB LOCATION</b> : {str(job['location'])}\n\n<b>JOB URL</b> : {str(job['url'])}\n\n<b>JOB DESCRIPTION</b> : {str(job['description'])}"
+        bot.send_message(chat_id=GROUP_ID, text=msg, parse_mode='HTML')
 
 
 #---------------------indeed scraper----------------------#
@@ -412,17 +427,19 @@ def job_listener(event):
     else:
         logging.info('The job worked :) ' + str(event))
 
-# if __name__ == "__main__":
-#     scheduler = BlockingScheduler()
-#     scheduler.add_job(send_tenders, 'interval', minutes = 60)
-#     scheduler.add_job(linkedin_scraper, 'interval', minutes = 60)
-#     scheduler.add_job(jobindex_scraper, 'interval', minutes = 60)
-#     scheduler.add_job(jobbank_scrapper, 'interval', minutes = 60)
-#     scheduler.start()
-#     scheduler.add_listener(job_listener)
-#     driver.quit()
-#     driver_li.quit()
-
 if __name__ == "__main__":
-    linkedin_scraper()
+    scheduler = BlockingScheduler()
+    scheduler.add_job(send_tenders, 'interval', minutes = 60)
+    scheduler.add_job(linkedin_scraper, 'interval', hours = 24)
+    scheduler.add_job(jobindex_scraper, 'interval', hours = 24)
+    scheduler.add_job(jobbank_scrapper, 'interval', hours = 24)
+    scheduler.start()
+    scheduler.add_listener(job_listener)
+    driver.quit()
     driver_li.quit()
+    driver_ji.quit()
+    driver_jb.quit()
+
+# if __name__ == "__main__":
+#     jobindex_scraper()
+#     driver_ji.quit()
