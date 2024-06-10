@@ -262,7 +262,7 @@ def linkedin_scraper():
             job_data["location"] = location
             job_data["url"] = job_url
             job_data["description"] = description
-            jobs.append(job_data)
+            jobs.append(jobs)
             time.sleep(5)
     for job in jobs:
         msg = f"<b>LinkedIn</b>\n---------------------\n<b>JOB POSITION</b> : {str(job['position'])}\n\n<b>JOB LOCATION</b> : {str(job['location'])}\n\n<b>JOB URL</b> : {str(job['url'])}\n\n<b>JOB DESCRIPTION</b> : {str(job['description'])}"
@@ -328,7 +328,7 @@ def jobindex_scraper():
                 job_data["location"] = location
                 job_data["url"] = job_url
                 job_data["description"] = description
-                jobs.append(job_data)
+                jobs.append(jobs)
                 time.sleep(2)
             try:
                 pag = driver_ji.find_element(By.CLASS_NAME, "jix_pagination")
@@ -388,7 +388,7 @@ def jobbank_scrapper():
                 job_data["location"] = location
                 job_data["url"] = job_url
                 job_data["description"] = description
-                jobs.append(job_data)
+                jobs.append(jobs)
                 time.sleep(2)
             try:
                 pag = driver_jb.find_element(By.CLASS_NAME, "jix_pagination")
