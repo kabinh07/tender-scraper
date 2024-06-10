@@ -37,7 +37,7 @@ user_agents = [
 
 # Options for chrome driver
 opts = ChromeOptions()
-# opts.add_argument("--headless=new")
+opts.add_argument("--headless=new")
 opts.add_argument(f'user-agent={random.choice(user_agents)}')
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
