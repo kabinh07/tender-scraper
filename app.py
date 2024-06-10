@@ -25,9 +25,9 @@ load_dotenv()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# GROUP_ID = os.environ.get("GROUP_ID")
+GROUP_ID = os.environ.get("GROUP_ID")
 
-GROUP_ID = -4287359358
+# GROUP_ID = -4287359358
 
 user_agents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -37,7 +37,7 @@ user_agents = [
 
 # Options for chrome driver
 opts = ChromeOptions()
-opts.add_argument("--headless=new")
+# opts.add_argument("--headless=new")
 opts.add_argument(f'user-agent={random.choice(user_agents)}')
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
@@ -167,7 +167,7 @@ def send_tenders():
     columns = [col.replace('\n','') for col in columns]
     if len(tenders) > 0:
         for tender in tenders:
-            msg = f"<b>{str(columns[0])}</b> : {str(tender[0])}\n\n<b>{str(columns[1])}</b> : {str(tender[1])}\n\n<b>{str(columns[2])}</b> : {str(tender[2])}\n\n<b>{str(columns[3])}</b> : {str(tender[3])}\n\n<b>{str(columns[4])}</b> : {str(tender[4])}\n\n<b>{str(columns[5])}</b> : {str(tender[5])}"
+            msg = f"<b>Tender</b>\n---------------------\n<b>{str(columns[0])}</b> : {str(tender[0])}\n\n<b>{str(columns[1])}</b> : {str(tender[1])}\n\n<b>{str(columns[2])}</b> : {str(tender[2])}\n\n<b>{str(columns[3])}</b> : {str(tender[3])}\n\n<b>{str(columns[4])}</b> : {str(tender[4])}\n\n<b>{str(columns[5])}</b> : {str(tender[5])}"
             retry = 0
             max_try = 2
             while retry < max_try:
@@ -293,23 +293,30 @@ def jobindex_scraper():
         keyword = keyword.replace(" ", "+")
         base_url = f"https://www.jobindex.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
         driver_ji.get(base_url)
-        count = 0
-        while count < 3:
+        while True:
             try:
                 WebDriverWait(driver_ji, 30).until(EC.presence_of_element_located((By.CLASS_NAME, "jobsearch-result")))
+                time.sleep(5)
                 results = driver_ji.find_elements(By.CLASS_NAME, "jobsearch-result")
                 logging.info(f"jobindex: {len(results)} job for {keyword}")
             except Exception as e:
-                count += 1
-                logging.info(f"jobindex: Error finding results. Retrying {count}: {e}")
+                logging.info(f"jobindex: No result for {keyword}")
+                break
             for result in results:
-                WebDriverWait(driver_ji, 30).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "jix_robotjob--area")))
-                job_pos = result.find_element(By.TAG_NAME, "h4").text               
+                WebDriverWait(driver_ji, 30).until(EC.presence_of_all_elements_located((By.TAG_NAME, "h4")))
+                job_pos = result.find_element(By.TAG_NAME, "h4").text    
+                location_tag = None           
                 try:
                     location_tag = result.find_element(By.CLASS_NAME, "jix_robotjob--area")
-                except:
-                    location_tag = result.find_element(By.CLASS_NAME, "jobad-element-area")
-                location = location_tag.text
+                except Exception as e:
+                    logging.info(f"jobindex: Error finding location tag for {job_pos}: {e}")
+                if location_tag is None:
+                    try:
+                        location_tag = result.find_element(By.CLASS_NAME, "jobad-element-area")
+                    except Exception as e:
+                        logging.info(f"jobindex: Error finding location tag optional for {job_pos}: e")
+                if location_tag is not None:
+                    location = location_tag.text
                 descriptions = result.find_elements(By.TAG_NAME, "p")
                 job_url_tag = result.find_element(By.CLASS_NAME, "seejobdesktop")
                 job_url = job_url_tag.get_attribute("href")
@@ -351,10 +358,16 @@ def jobbank_scrapper():
         keyword = keyword.replace(" ", "+")
         base_url = f"https://www.it-jobbank.dk/jobsoegning/danmark?jobage=1&lang=en&q={keyword}"
         driver_jb.get(base_url)
-        while True:
-            WebDriverWait(driver_jb, 30).until(EC.presence_of_element_located((By.CLASS_NAME, "results")))
-            results = driver_jb.find_elements(By.CLASS_NAME, "jobsearch-result")
-            logging.info(f"jobbank: {len(results)} job for {keyword}")
+        count = 0
+        while count < 3:
+            try:
+                WebDriverWait(driver_jb, 30).until(EC.presence_of_element_located((By.CLASS_NAME, "results")))
+                time.sleep(5)
+                results = driver_jb.find_elements(By.CLASS_NAME, "jobsearch-result")
+                logging.info(f"jobbank: {len(results)} job for {keyword}")
+            except Exception as e:
+                count += 1
+                logging.info(f"jobbank: Error finding results. Retrying {count}: {e}")
             for result in results:
                 WebDriverWait(driver_jb, 30).until(EC.presence_of_all_elements_located((By.CLASS_NAME, "job-location")))
                 job_head = result.find_element(By.TAG_NAME, "h3")
@@ -388,6 +401,8 @@ def jobbank_scrapper():
                 logging.info(f"jobbank: No more pages...")
                 time.sleep(2)
                 break
+        if count > 2:
+            logging.info(f"jobindex: No result for {keyword}")
     for job in jobs:
         msg = f"<b>JobBank</b>\n---------------------\n<b>JOB POSITION</b> : {str(job['position'])}\n\n<b>JOB LOCATION</b> : {str(job['location'])}\n\n<b>JOB URL</b> : {str(job['url'])}\n\n<b>JOB DESCRIPTION</b> : {str(job['description'])}"
         bot.send_message(chat_id=GROUP_ID, text=msg, parse_mode='HTML')
@@ -441,5 +456,4 @@ if __name__ == "__main__":
     driver_jb.quit()
 
 # if __name__ == "__main__":
-#     jobindex_scraper()
-#     driver_ji.quit()
+#     bot.send_message(chat_id=GROUP_ID, text="Hello")
